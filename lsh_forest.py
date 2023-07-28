@@ -86,6 +86,7 @@ class LSHForest:
 
     def index_data(self):
         for ht in self.hash_tables:
+            ht.clear()
             for i in range(self.data_ref.shape[0]):
                 ht.insert(self.data_ref[i], i)
 

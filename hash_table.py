@@ -20,11 +20,14 @@ class HashTable:
         hashed = self.hasher.hash(vec)
         self.table[hashed].add(vec_id)
 
+    def clear(self) -> None:
+        self.table = defaultdict(set)
+
     def bucket_iter(self, vec: np.array) -> Generator[Set[int], None, None]:
         hashed = self.hasher.hash(vec)
         for k in self._prefix_iter(hashed):
             if k in self.table:
-                yield self.table[k]
+                yield self.table[k].copy()
 
     def _prefix_iter(self, num: int) -> int:
         for i in range(self.nbits**2):
