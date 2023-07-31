@@ -49,7 +49,7 @@ class PStableHasher(Hasher):
 
         # Constant proposed in [1]
         self.r = 4
-        # Constant proposed in [3]
+        # Prime constant proposed in [3]
         self.C = pow(2, 32) - 5
         self.b = np.random.randint(0, self.r)
         if distribution == "cauchy":
@@ -71,10 +71,10 @@ class PStableHasher(Hasher):
 # ref:
 # [1] https://www.cs.princeton.edu/courses/archive/spr04/cos598B/bib/CharikarEstim.pdf
 class HammingHasher(Hasher):
-    def __init__(self, nbits: int, dim: int, *args, **kwargs):
+    def __init__(self, nbits: int, dim: int):
         if nbits >= dim:
             raise ValueError(f"nbits ({nbits}) must be less than dim ({dim})")
-        super().__init__(nbits, dim, *args, **kwargs)
+        super().__init__(nbits, dim)
         # Precompute powers of 2 to speed up hashing
         self._powers_of_two = 1 << np.arange(dim)[::-1]
         # Keep just nbits set
