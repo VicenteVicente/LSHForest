@@ -1,3 +1,9 @@
+# Implementation of different hashing schemes mentioned in "A Survey on Locality Sensitive Hashing Algorithms
+# and their Applications"
+#
+# src: https://arxiv.org/pdf/2102.08942.pdf
+
+import random
 from abc import ABC, abstractmethod
 from typing import Literal
 
@@ -14,8 +20,7 @@ class Hasher(ABC):
         raise NotImplementedError
 
 
-# Hamming distance
-# "Similarity Estimation Techniques from RoundingAlgorithms"
+# Also known as "SimHash". Used for cosine distance
 #
 # ref:
 # [1] https://www.cs.princeton.edu/courses/archive/spring04/cos598B/bib/CharikarEstim.pdf
@@ -32,15 +37,14 @@ class RandomProjectionHasher(Hasher):
         return np.dot((np.dot(self._plane_normals, vec) > 0).astype(np.uint8), self._powers_of_two)
 
 
-# Minkowski distance (for p=1 and p=2)
-# "Locality-Sensitive Hashing Scheme Based on p-Stable Distributions"
+# Used for Minkowski distance
 #
 # ref:
 # [1] https://www.cs.princeton.edu/courses/archive/spr05/cos598E/bib/p253-datar.pdf
 # [2] https://github.com/guoziqingbupt/Locality-sensitive-hashing/blob/master/e2LSH.py
 # [3] https://www.mit.edu/~andoni/LSH/manual.pdf
 class PStableHasher(Hasher):
-    def __init__(self, nbits: int, dim: int, distribution: Literal["cauchy", "levy", "normal"]):
+    def __init__(self, nbits: int, dim: int, distribution: Literal["cauchy", "levy", "normal"] = "normal"):
         super().__init__(nbits, dim)
 
         # Constant proposed in [1]
@@ -60,3 +64,21 @@ class PStableHasher(Hasher):
     def hash(self, vec: np.array) -> int:
         # h_1(a), defined in [3] at 3.5.2.
         return (int(np.dot(self.a, vec) + self.b) / self.r) % pow(2, self.nbits)
+
+
+# Used for Hamming distance
+#
+# ref:
+# [1] https://www.cs.princeton.edu/courses/archive/spr04/cos598B/bib/CharikarEstim.pdf
+class HammingHasher(Hasher):
+    def __init__(self, nbits: int, dim: int, *args, **kwargs):
+        if nbits >= dim:
+            raise ValueError(f"nbits ({nbits}) must be less than dim ({dim})")
+        super().__init__(nbits, dim, *args, **kwargs)
+        # Precompute powers of 2 to speed up hashing
+        self._powers_of_two = 1 << np.arange(dim)[::-1]
+        # Keep just nbits set
+        self._powers_of_two[np.random.choice(dim, dim - nbits)] = 0
+
+    def hash(self, vec: np.array) -> int:
+        return np.dot(vec, self._powers_of_two)
