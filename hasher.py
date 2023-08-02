@@ -29,7 +29,7 @@ class RandomProjectionHasher(Hasher):
         super().__init__(nbits, dim)
 
         # Random plane normals
-        self._plane_normals = np.random.rand(nbits, dim) - 0.5
+        self._plane_normals = np.random.standard_normal((nbits, dim))
         # Precompute powers of 2 to speed up hashing
         self._powers_of_two = 1 << np.arange(nbits)[::-1]
 
