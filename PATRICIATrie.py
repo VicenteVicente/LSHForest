@@ -1,10 +1,45 @@
-from typing import Any, Dict
+from typing import Any, Dict, Generator
+
+
+class PrefixIter:
+    def __init__(self, patricia_trie_ref: "PATRICIATrie", prefix: str):
+        self.patricia_trie_ref = patricia_trie_ref
+        self.prefix = prefix
+        self.trie_iter = self._traverse_up(patricia_trie_ref.descend(prefix))
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> Generator["PATRICIATrie", None, None]:
+        return next(self.trie_iter)
+
+    def _traverse_up(self, node: "PATRICIATrie") -> Generator["PATRICIATrie", None, None]:
+        if node.is_root:
+            return
+        elif node.is_leaf:
+            yield node
+        for child in node.parent._storage.values():
+            if child != node:
+                yield from self._post_order_traversal(child)
+        yield from self._traverse_up(node.parent)
+
+    def _post_order_traversal(self, node: "PATRICIATrie") -> Generator["PATRICIATrie", None, None]:
+        if node.is_leaf:
+            yield node
+        else:
+            for child in node._storage.values():
+                yield from self._post_order_traversal(child)
 
 
 class PATRICIATrie:
     def __init__(self):
         self._storage: Dict[str, PATRICIATrie] = dict()
+        self.parent = None
         self.value = None
+
+    @property
+    def is_root(self) -> bool:
+        return self.parent is None
 
     @property
     def is_leaf(self) -> bool:
@@ -13,12 +48,30 @@ class PATRICIATrie:
     def clear(self) -> None:
         self._storage = dict()
 
+    # Returns the node with the longest prefix match
+    def descend(self, key: str) -> "PATRICIATrie":
+        found, prefix_index = self._prefix_match(key)
+        if found is None:
+            # No prefix found, return a randomly chosen leaf
+            curr = self
+            while not curr.is_leaf:
+                curr = next(iter(curr._storage.values()))
+            return curr
+        elif prefix_index == len(key):
+            # Leaf found
+            return self._storage[found]
+        else:
+            # key[:prefix_index] is a prefix of found
+            return self._storage[found].descend(key[prefix_index:])
+
+    # Gets the value for a key if it exists
     def __getitem__(self, key: str) -> Any:
         try:
             return self._get(key)
         except KeyError:
             raise KeyError(f'Key "{key}" not found')
 
+    # Sets the value for a key
     def __setitem__(self, key: str, value: Any) -> None:
         self._insert(key, value)
 
@@ -51,6 +104,7 @@ class PATRICIATrie:
         if found is None:
             # No key prefix found, must create
             t = PATRICIATrie()
+            t.parent = self
             t.value = value
             self._storage[key] = t
         elif prefix_index == len(found):
@@ -65,7 +119,9 @@ class PATRICIATrie:
             # found[:prefix_index] is a prefix of key, must split
             t = PATRICIATrie()
             t._storage[found[prefix_index:]] = self._storage.pop(found)
+            t._storage[found[prefix_index:]].parent = t
             self._storage[found[:prefix_index]] = t
+            self._storage[found[:prefix_index]].parent = self
             if prefix_index == len(key):
                 # Reached the insertion node
                 t.value = value
@@ -73,28 +129,21 @@ class PATRICIATrie:
                 # Continue inserting the suffix
                 t._insert(key[prefix_index:], value)
 
-    # Returns a key and its prefix index for b if any
-    def _prefix_match(self, b: str):
-        def get_prefix_index(b1: str, b2: str) -> int:
-            max_len = min(len(b1), len(b2))
+    # Returns a key and its prefix index for key
+    def _prefix_match(self, key: str):
+        def get_prefix_index(s1: str, s2: str) -> int:
+            max_len = min(len(s1), len(s2))
             for i in range(max_len):
-                if b1[i] != b2[i]:
+                if s1[i] != s2[i]:
                     return i
             return max_len
 
-        for key in self._storage:
-            prefix_index = get_prefix_index(b, key)
+        for _key in self._storage:
+            prefix_index = get_prefix_index(_key, key)
             if prefix_index:
-                return key, prefix_index
+                return _key, prefix_index
         return None, None
 
-
-t = PATRICIATrie()
-t["0000"] = 0
-t["0010"] = 1
-t["1000"] = 2
-t["1010"] = 3
-t["10"] = 4
-t["0"] = 5
-t["00001"] = 6
-print(t)
+    # Returns an iterator that yields each leaf sorted by the lenght of the prefix match
+    def get_prefix_iter(self, prefix: str) -> PrefixIter:
+        return PrefixIter(self, prefix)
