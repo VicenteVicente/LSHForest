@@ -1,11 +1,13 @@
 from typing import Any, Dict, Generator
 
+import numpy as np
+
 
 class PrefixIter:
-    def __init__(self, patricia_trie_ref: "PATRICIATrie", prefix: str):
-        self.patricia_trie_ref = patricia_trie_ref
-        self.prefix = prefix
-        self.trie_iter = self._traverse_up(patricia_trie_ref.descend(prefix))
+    def __init__(self, patricia_trie_ref: "PATRICIATrie", prefix: bytes):
+        self.patricia_trie_ref: "PATRICIATrie" = patricia_trie_ref
+        self.prefix: bytes = prefix
+        self.trie_iter: Generator["PATRICIATrie", None, None] = self._traverse_up(patricia_trie_ref.descend(prefix))
 
     def __iter__(self):
         return self
@@ -18,7 +20,7 @@ class PrefixIter:
             return
         elif node.is_leaf:
             yield node
-        for child in node.parent._storage.values():
+        for child in node.parent.children.values():
             if child != node:
                 yield from self._post_order_traversal(child)
         yield from self._traverse_up(node.parent)
@@ -27,15 +29,15 @@ class PrefixIter:
         if node.is_leaf:
             yield node
         else:
-            for child in node._storage.values():
+            for child in node.children.values():
                 yield from self._post_order_traversal(child)
 
 
 class PATRICIATrie:
     def __init__(self):
-        self._storage: Dict[str, PATRICIATrie] = dict()
-        self.parent = None
-        self.value = None
+        self.children: Dict[bytes, PATRICIATrie] = dict()
+        self.parent: PATRICIATrie = None
+        self.value: PATRICIATrie = None
 
     @property
     def is_root(self) -> bool:
@@ -45,105 +47,104 @@ class PATRICIATrie:
     def is_leaf(self) -> bool:
         return self.value is not None
 
-    def clear(self) -> None:
-        self._storage = dict()
-
     # Returns the node with the longest prefix match
-    def descend(self, key: str) -> "PATRICIATrie":
+    def descend(self, key: bytes) -> "PATRICIATrie":
         found, prefix_index = self._prefix_match(key)
         if found is None:
             # No prefix found, return a randomly chosen leaf
             curr = self
             while not curr.is_leaf:
-                curr = next(iter(curr._storage.values()))
+                curr = next(iter(curr.children.values()))
             return curr
         elif prefix_index == len(key):
             # Leaf found
-            return self._storage[found]
+            return self.children[found]
         else:
             # key[:prefix_index] is a prefix of found
-            return self._storage[found].descend(key[prefix_index:])
+            return self.children[found].descend(key[prefix_index:])
 
     # Gets the value for a key if it exists
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: bytes) -> Any:
         try:
-            return self._get(key)
+            return self.get(key)
         except KeyError:
             raise KeyError(f'Key "{key}" not found')
 
     # Sets the value for a key
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._insert(key, value)
+    def __setitem__(self, key: bytes, value: Any) -> None:
+        self.insert(key, value)
 
     def __repr__(self, ident: int = 0) -> str:
         ret = ""
-        for key in self._storage.keys():
-            curr = self._storage[key]
+        for key in self.children.keys():
+            curr = self.children[key]
             ret += " " * ident + str(key)
             if curr.is_leaf:
                 ret += f" ({curr.value})"
             ret += "\n" + curr.__repr__(ident + 4)
         return ret
 
-    def _get(self, key: str) -> Any:
+    def get(self, key: bytes) -> Any:
         found, prefix_index = self._prefix_match(key)
         if prefix_index == len(found):
             # found is a prefix of key
             if prefix_index == len(key):
                 # found equals key
-                return self._storage[found].value
+                return self.children[found].value
             else:
                 # key[:prefix_index] is a prefix of found
-                return self._storage[found]._get(key[prefix_index:])
+                return self.children[found].get(key[prefix_index:])
         else:
             # No key prefix found
             raise KeyError
 
-    def _insert(self, key: str, value: Any) -> None:
+    def insert(self, key: bytes, value: Any) -> None:
         found, prefix_index = self._prefix_match(key)
         if found is None:
             # No key prefix found, must create
             t = PATRICIATrie()
             t.parent = self
             t.value = value
-            self._storage[key] = t
+            self.children[key] = t
         elif prefix_index == len(found):
             # found is a prefix of key, must extend
             if prefix_index == len(key):
                 # found equals key
-                self._storage[found].value = value
+                self.children[found].value = value
             else:
                 # Continue inserting the suffix
-                self._storage[found]._insert(key[prefix_index:], value)
+                self.children[found].insert(key[prefix_index:], value)
         else:
             # found[:prefix_index] is a prefix of key, must split
             t = PATRICIATrie()
-            t._storage[found[prefix_index:]] = self._storage.pop(found)
-            t._storage[found[prefix_index:]].parent = t
-            self._storage[found[:prefix_index]] = t
-            self._storage[found[:prefix_index]].parent = self
+            t.children[found[prefix_index:]] = self.children.pop(found)
+            t.children[found[prefix_index:]].parent = t
+            self.children[found[:prefix_index]] = t
+            self.children[found[:prefix_index]].parent = self
             if prefix_index == len(key):
                 # Reached the insertion node
                 t.value = value
             else:
                 # Continue inserting the suffix
-                t._insert(key[prefix_index:], value)
+                t.insert(key[prefix_index:], value)
 
     # Returns a key and its prefix index for key
-    def _prefix_match(self, key: str):
-        def get_prefix_index(s1: str, s2: str) -> int:
-            max_len = min(len(s1), len(s2))
-            for i in range(max_len):
-                if s1[i] != s2[i]:
-                    return i
-            return max_len
+    def _prefix_match(self, key: bytes):
+        def get_prefix_index_np(b1: bytes, b2: bytes) -> int:
+            max_len = min(len(b1), len(b2))
+            if b1[:max_len] == b2[:max_len]:
+                return max_len
+            else:
+                arr1 = np.frombuffer(b1, dtype=bool, count=max_len)
+                arr2 = np.frombuffer(b2, dtype=bool, count=max_len)
+                return np.where(arr1 != arr2)[0][0]
 
-        for _key in self._storage:
-            prefix_index = get_prefix_index(_key, key)
+        for _key in self.children:
+            prefix_index = get_prefix_index_np(_key, key)
             if prefix_index:
                 return _key, prefix_index
         return None, None
 
     # Returns an iterator that yields each leaf sorted by the lenght of the prefix match
-    def get_prefix_iter(self, prefix: str) -> PrefixIter:
+    def get_prefix_iter(self, prefix: bytes) -> PrefixIter:
         return PrefixIter(self, prefix)
