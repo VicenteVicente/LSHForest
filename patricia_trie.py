@@ -7,7 +7,7 @@ class PrefixIter:
     def __init__(self, patricia_trie_ref: "PATRICIATrie", prefix: bytes):
         self.patricia_trie_ref: "PATRICIATrie" = patricia_trie_ref
         self.prefix: bytes = prefix
-        self.trie_iter: Generator["PATRICIATrie", None, None] = self._traverse_up(patricia_trie_ref.descend(prefix))
+        self.trie_iter: Generator["PATRICIATrie", None, None] = self._traverse_up(self.patricia_trie_ref.descend(self.prefix))
 
     def __iter__(self):
         return self

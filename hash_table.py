@@ -1,34 +1,37 @@
-from collections import defaultdict
-from typing import Dict, Generator, Set, Type
+from typing import Any, Generator, Set
 
 import numpy as np
+import numpy.typing as npt
 
-from hasher import Hasher
+from hasher import Hasher, RandomProjectionHasher
+from patricia_trie import PATRICIATrie
 
 
-# Could be optimized using LSH Trees, implemented as a Trie
-#
-# See http://infolab.stanford.edu/~bawa/Pub/similarity.pdf at 5.2
 class HashTable:
-    def __init__(self, nbits: int, dim: int, hasher_class: Type[Hasher]):
-        self.nbits: int = nbits
-        self.dim: int = dim
-        self.hasher: Hasher = hasher_class(nbits, dim)
-        self.table: Dict[int, Set[int]] = defaultdict(set)
+    def __init__(self, hasher: Hasher):
+        self._hasher: Hasher = hasher
+        self._trie: PATRICIATrie = PATRICIATrie()
+        self._table = dict()
 
-    def insert(self, vec: np.array, vec_id: int):
-        hashed = self.hasher.hash(vec)
-        self.table[hashed].add(vec_id)
+    def __setitem__(self, vec: npt.ArrayLike, value: Any) -> None:
+        self.insert(vec, value)
 
+    # Insert a vector into the hash table
+    def insert(self, vec: npt.ArrayLike, value: Any) -> None:
+        hashed = bytes(self._hasher.hash(vec))
+        if not hashed in self._table:
+            # Create a reference of the bucket in the trie
+            self._table[hashed] = set()
+            self._trie[hashed] = self._table[hashed]
+        self._table[hashed].add(value)
+
+    # Returns an iterator that yields each bucket sorted by the lenght of the prefix match
+    def get_prefix_bucket_iter(self, vec: npt.ArrayLike) -> Generator[Set[Any], None, None]:
+        hashed = bytes(self._hasher.hash(vec))
+        for node in self._trie.get_prefix_iter(hashed):
+            yield node.value
+
+    # Clear the hash table
     def clear(self) -> None:
-        self.table = defaultdict(set)
-
-    def bucket_iter(self, vec: np.array) -> Generator[Set[int], None, None]:
-        hashed = self.hasher.hash(vec)
-        for k in self._prefix_iter(hashed):
-            if k in self.table:
-                yield self.table[k].copy()
-
-    def _prefix_iter(self, num: int) -> int:
-        for i in range(self.nbits**2):
-            yield num ^ i
+        self._table = dict()
+        self._trie = PATRICIATrie()
